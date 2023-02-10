@@ -1,65 +1,92 @@
+#include <RHReliableDatagram.h>
+#include <RH_NRF24.h>
 #include <SPI.h>
-#include <nRF24L01.h>
-#include <RF24.h>
 
-#include <Servo.h>
+#define CLIENT_ADDRESS 78
+#define SERVER_ADDRESS 89
 
-Servo myServo;
-RF24 radio(7, 8); // CE, CSN
-const byte address[6] = "78789";
+RH_NRF24 driver(7,8);
 
-const int x = A0; // analog pin connected to X output
-const int y = A1; // analog pin connected to Y output
-const int z = A7;
-const int switchPin = 11; // analog pin connected to Y output
+RHReliableDatagram manager(driver, CLIENT_ADDRESS); 
 
+const int PIN_X = A0; // analog pin connected to X output
+const int PIN_Y = A1; // analog pin connected to Y output
+const int PIN_POTENSIO_FOR_ARM = A7; // Pin for potensio Meter
+const int PIN_SWITCH_FOR_CLAW = 11; // analog pin connected to Y output
 
 char carDir = 'S';
 char clawState = '1';
-//char sendiState = '0';
+char armState[16];
+char mappingPotensioValue = 3;
 
-int xValue, yValue, claw , potensioValue , servoPos = 0;
+int xValue, yValue, claw , potensioValue;
 
-void setup() {
-  setupRadio();
-  pinMode(switchPin, INPUT);
+void setup() 
+{
+  pinMode(PIN_SWITCH_FOR_CLAW, INPUT);
   Serial.begin(9600);
-//  myServo.attach(4);
+  if (!manager.init())Serial.println("init failed");
+  else Serial.println("init success");
 }
 
-void loop() {
-  potensioValue = analogRead(z);
-  xValue = analogRead(x);
-  yValue = analogRead(y);
-  claw = digitalRead(switchPin);
+uint8_t buf[RH_NRF24_MAX_MESSAGE_LEN];
+
+void loop()
+{
+  potensioValue = analogRead(PIN_POTENSIO_FOR_ARM);
+  xValue = analogRead(PIN_X);
+  yValue = analogRead(PIN_Y);
+  claw = digitalRead(PIN_SWITCH_FOR_CLAW);
+
+  Serial.println(xValue);
+  Serial.println(yValue);
     
-  if(xValue >= 505 && xValue<=515 && yValue >= 490 && yValue<=500)
+  if(xValue >= 505 && xValue<=530 && yValue >= 490 && yValue<=530)
     carDir = 'S'; //stop
   else if (xValue > 518 && yValue >= 254 && yValue <= 700)
-    carDir = 'F'; //maju
+    carDir = 'B'; //maju
   else if (xValue < 518 && yValue >= 254 && yValue <= 700)
-    carDir = 'B'; //mundur
+    carDir = 'F'; //mundur
   else if (xValue >= 254 && xValue <= 700 && yValue < 518)
     carDir = 'L'; //kiri
   else if (xValue >= 254 && xValue <= 700 && yValue > 518)
     carDir = 'R'; //kanan
-
+  
   if(claw == HIGH) clawState = '1';
   else clawState = '0';
 
-  sendiState = potensioValue/3;
-  const char data[6] = {carDir,clawState,sendiState,'\0'};
-//  Serial.print(claw);
-  Serial.println(data);
-//  Serial.println(potensioValue/3);
-  radio.write(&data, sizeof(data));
-//  myServo.write(potensioValue/3);  
-  delay(20);
-}
+  potensioValue = potensioValue/mappingPotensioValue;
+  itoa(potensioValue, armState,10);
+  const char data[7] = {carDir,clawState,armState[0],armState[1],armState[2],'\0'};
 
-void setupRadio(){
-  radio.begin();
-  radio.openWritingPipe(address);
-  radio.setPALevel(RF24_PA_MIN);
-  radio.stopListening();
+  Serial.print("Arm State : ");
+  Serial.println(armState);
+  
+  Serial.print(claw);
+  Serial.println(data);
+  
+  if (manager.sendtoWait(data, sizeof(data), SERVER_ADDRESS))
+  {
+    uint8_t len = sizeof(buf);
+    uint8_t from;   
+    if (manager.recvfromAckTimeout(buf, &len, 2000, &from))
+    {
+      Serial.print("dibales sama : 0x");
+      Serial.print(from, HEX);
+      Serial.print(", katanya: ");
+      Serial.println((char*)buf);
+    }
+    else
+    {
+      Serial.println("No reply, is nrf24_reliable_datagram_server running?");
+    }
+  }
+  else{
+    Serial.println("sendtoWait failed");
+    if (!manager.init())Serial.println("init failed");
+    else Serial.println("init success");
+
+  }
+ 
+  delay(10);
 }
