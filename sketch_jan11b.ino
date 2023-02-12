@@ -1,32 +1,30 @@
-  //koneksi joystick
-#include <SPI.h>
-  //Servo untuk capit
-#include <PWMServo.h> //servo biasa conflict kalo pake radiohead
-//#include <Servo.h>
-//LCD
+#include <SPI.h> //koneksi joystick
+#include <PWMServo.h> //Library Servo biasa , conflit radio Head
 #include <LiquidCrystal_I2C.h>
+#include <RHReliableDatagram.h>
+#include <RH_NRF24.h>
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 uint8_t stickman [] = {0xe,0xe,0xe,0x15,0xe,0x4,0xa,0x11};  
 
+//Konstanta Untuk Gerakan Roda / Motor
 #define revLeft 42
 #define fwdLeft 44
 #define revRight 4
 #define fwdRight 5
 #define ENAPin 6
 #define ENBPin 3
-#define speedMotorRight 100
-#define speedMotorLeft 100
+#define speedMotorRight 80
+#define speedMotorLeft 80
 
-PWMServo capit; // object Servo
+
+//Servo
+PWMServo capit; 
 PWMServo arm;
-//Servo capit;
 char capitState = '0';
+int armPosition = '0';
 int pos = 0; // servo position
 
-#include <RHReliableDatagram.h>
-#include <RH_NRF24.h>
-
-
+//Komunikasi
 #define CLIENT_ADDRESS 78
 #define SERVER_ADDRESS 89
 
@@ -59,6 +57,7 @@ void setup()
     Serial.println("init failed");
   else Serial.println("init success");
 
+  //SET UP LCD
   lcd.setCursor(0,0);
   lcd.print("--ROBOTIC UAJY--");
   lcd.setCursor(0,1);
@@ -71,10 +70,8 @@ uint8_t buf[RH_NRF24_MAX_MESSAGE_LEN];
 
 void loop()
 {
-
   if (manager.available())
   {
-//    Serial.println("manager available");
     uint8_t len = sizeof(buf);
     uint8_t from;
     if (manager.recvfromAck(buf, &len, &from))
@@ -109,7 +106,7 @@ void loop()
             capitState='1';
             }
             break;
-        case '0':
+        case '0' : 
           if(capitState == (char*)buf[1]){break;}
           else{
             tutupCapit();
@@ -117,25 +114,19 @@ void loop()
           }
           break;
       }
-
-//      Serial.println(((char*)buf)[2]);
-//      Serial.println(((char*)buf)[3]);
-//      Serial.println(((char*)buf)[4]);
+      
       String servoPosArm(((char*)buf)[2]);
       servoPosArm.concat(((char*)buf)[3]);
       servoPosArm.concat(((char*)buf)[4]);
-//      int iservoPosArm;
-      arm.write((servoPosArm.toInt())/2);
-//      iservoPosArm = servoPosArm.toInt;
+      if(servoPosArm.toInt() !=  armPosition){
+          arm.write((servoPosArm.toInt()/2));
+          armPosition = servoPosArm.toInt();
+      };
       Serial.println((servoPosArm));
       
-//
-//        Serial.print("buf 1");
-//        Serial.println((char*)buf[1]);
-//        Serial.print("capitState");
-//        Serial.println(capitState);
       if (!manager.sendtoWait(data, sizeof(data), from)){
         Serial.println("sendtoWait failed");
+            //Jika Sinyal Ilang, berhenti
             berhenti();
             if (!manager.init())Serial.println("init failed");
             else Serial.println("init success");
@@ -146,27 +137,13 @@ void loop()
 
 
 void tutupCapit(){
-  for(pos= 0;pos <= 360;pos+=10){
-  capit.write(pos);
-  Serial.println(pos);
-  }
-//  Serial.println("Mantap boss capit dah gerak sampai posisi");
-//  capit.write(360);
-//  capit.write(360);
-//  capit.write(360);
-//  capit.write(360);
+  capit.write(180);
   Serial.write("Debbug : tutup Capit");
 }
   
 
 void bukaCapit(){
-//  for( pos = 360; pos = 0;pos-=5/*kecepatan membuka capit */ ){
-//  capit.write(pos); 
-//  }
-//    capit.write(0);
-    capit.write(0);
-//    capit.write(0);
-//    capit.write(0);
+    capit.write(100);
     Serial.write("Debbug : buka Capit");
 
 }
@@ -197,6 +174,7 @@ void berhenti(){
   digitalWrite(revRight, LOW);
   digitalWrite(fwdLeft, LOW);
   digitalWrite(revLeft, LOW);
+  Serial.write("stop");
 }
 
 void maju(){
